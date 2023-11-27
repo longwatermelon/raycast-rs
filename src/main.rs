@@ -4,6 +4,8 @@ use macroquad::prelude as mq;
 use glam::Vec2;
 use std::collections::HashMap;
 
+const MAX_ENTS: usize = 15;
+
 #[macroquad::main(window_conf)]
 async fn main() {
     rc::util::set_scrw_scrh(800, 800);
@@ -16,6 +18,7 @@ async fn main() {
     map.ceil_tex(rc::Surface::Color(mq::GRAY.into()));
 
     let mut entities: Vec<rc::Entity> = Vec::new();
+    let mut ent_speeds: Vec<f32> = Vec::new();
 
     let mut items: Vec<rc::Item> = vec![
         rc::Item::new("gun", include_bytes!("res/gun.png")),
@@ -73,17 +76,18 @@ async fn main() {
 
         // Spawn entities
         let rng: i32 = mq::rand::gen_range(0, 100);
-        if rng == 1 && entities.len() < 15 {
+        if rng == 1 && entities.len() < MAX_ENTS {
             entities.push(rc::Entity::new(Vec2::new(100., 200.), 'e', (20., 30.)));
+            ent_speeds.push(mq::rand::gen_range(1., 4.));
         }
 
         // Move entities
-        for ent in &mut entities {
+        for (ent, speed) in entities.iter_mut().zip(ent_speeds.iter()) {
             let diff: Vec2 = cam.orig - ent.pos;
-            let theta: f32 = f32::atan2(diff.y, diff.x);
+            let theta: f32 = f32::atan2(diff.y, diff.x) + mq::rand::gen_range(-1.5, 1.5);
             let dir: Vec2 = Vec2::new(theta.cos(), theta.sin());
 
-            ent.pos = rc::util::move_towards_collidable(&map, ent.pos, dir, 3.);
+            ent.pos = rc::util::move_towards_collidable(&map, ent.pos, ent.pos + dir, *speed);
         }
 
         mq::clear_background(mq::BLACK);
