@@ -1,3 +1,6 @@
+mod audio;
+
+use audio::Audio;
 use raycast::prelude as rc;
 use rc::prelude::{macroquad, glam};
 use macroquad::prelude as mq;
@@ -5,6 +8,30 @@ use glam::Vec2;
 use std::collections::HashMap;
 
 const MAX_ENTS: usize = 15;
+
+struct Entities {
+    ents: Vec<rc::Entity>,
+    speeds: Vec<f32>,
+}
+
+impl Entities {
+    fn new() -> Self {
+        Self {
+            ents: Vec::new(),
+            speeds: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, ent: rc::Entity, speed: f32) {
+        self.ents.push(ent);
+        self.speeds.push(speed);
+    }
+
+    fn remove(&mut self, index: usize) {
+        self.ents.remove(index);
+        self.speeds.remove(index);
+    }
+}
 
 #[macroquad::main(window_conf)]
 async fn main() {
@@ -17,8 +44,7 @@ async fn main() {
     map.floor_tex(rc::Surface::Color(mq::BEIGE.into()));
     map.ceil_tex(rc::Surface::Color(mq::GRAY.into()));
 
-    let mut entities: Vec<rc::Entity> = Vec::new();
-    let mut ent_speeds: Vec<f32> = Vec::new();
+    let mut ents: Entities = Entities::new();
 
     let mut items: Vec<rc::Item> = vec![
         rc::Item::new("gun", include_bytes!("res/gun.png")),
@@ -41,6 +67,8 @@ async fn main() {
     );
     let out_tex: mq::Texture2D = mq::Texture2D::from_image(&out_img);
 
+    let audio: Audio = Audio::new().await;
+
     loop {
         if mq::is_key_pressed(mq::KeyCode::Tab) {
             grabbed = !grabbed;
@@ -62,27 +90,32 @@ async fn main() {
         if mq::is_mouse_button_pressed(mq::MouseButton::Left) {
             // Animation
             match item {
-                0 => items[item].texswap(&shooting_gun, 0.1),
+                0 => {
+                    items[item].texswap(&shooting_gun, 0.1);
+                    audio.play_sound("shoot");
+                },
                 _ => (),
             }
 
             // Raycast
-            let ins: rc::Intersection = rc::cast_ray(&map, entities.iter(), &[], cam);
+            let ins: rc::Intersection = rc::cast_ray(&map, ents.ents.iter(), &[], cam);
             match ins.itype {
-                rc::IntersectionType::Entity { index, .. } => println!("Hit entity {}", index),
+                rc::IntersectionType::Entity { index, .. } => ents.remove(index),
                 _ => (),
             }
         }
 
         // Spawn entities
         let rng: i32 = mq::rand::gen_range(0, 100);
-        if rng == 1 && entities.len() < MAX_ENTS {
-            entities.push(rc::Entity::new(Vec2::new(100., 200.), 'e', (20., 30.)));
-            ent_speeds.push(mq::rand::gen_range(1., 4.));
+        if rng == 1 && ents.ents.len() < MAX_ENTS {
+            ents.push(
+                rc::Entity::new(Vec2::new(100., 200.), 'e', (20., 30.)),
+                mq::rand::gen_range(1., 4.)
+            );
         }
 
         // Move entities
-        for (ent, speed) in entities.iter_mut().zip(ent_speeds.iter()) {
+        for (ent, speed) in ents.ents.iter_mut().zip(ents.speeds.iter()) {
             let diff: Vec2 = cam.orig - ent.pos;
             let theta: f32 = f32::atan2(diff.y, diff.x) + mq::rand::gen_range(-1.5, 1.5);
             let dir: Vec2 = Vec2::new(theta.cos(), theta.sin());
@@ -92,10 +125,16 @@ async fn main() {
 
         mq::clear_background(mq::BLACK);
         out_img.bytes.fill(0);
-        rc::render(&map, entities.iter(), cam, rc::Fog::None, &mut out_img);
+        rc::render(&map, ents.ents.iter(), cam, rc::Fog::None, &mut out_img);
         out_tex.update(&out_img);
         mq::draw_texture(&out_tex, 0., 0., mq::WHITE);
         rc::render_item(&mut items);
+
+        let cx: f32 = mq::screen_width() / 2.;
+        let cy: f32 = mq::screen_height() / 2.;
+        mq::draw_line(cx, cy - 10., cx, cy + 10., 2., mq::WHITE);
+        mq::draw_line(cx - 10., cy, cx + 10., cy, 2., mq::WHITE);
+
         mq::next_frame().await;
     }
 }
