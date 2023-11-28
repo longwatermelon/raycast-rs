@@ -136,7 +136,7 @@ impl Game {
                 } else {
                     rc::util::fps_camera_controls(&map, &mut cam, 2.);
                 }
-                rc::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 1.);
+                rc::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 0.5);
 
                 // Misc keys
                 if mq::is_key_pressed(mq::KeyCode::R) {
