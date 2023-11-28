@@ -4,7 +4,7 @@ use audio::Audio;
 use raycast::prelude as rc;
 use rc::prelude::{macroquad, glam};
 use macroquad::prelude as mq;
-use glam::Vec2;
+use glam::{Vec2, IVec2};
 use std::collections::HashMap;
 
 const MAX_ENTS: usize = 15;
@@ -33,6 +33,21 @@ impl Entities {
     }
 }
 
+fn random_spot(map: &rc::Map) -> Vec2 {
+    let mut res: Vec2 = Vec2::default();
+    loop {
+        res.x = mq::rand::gen_range(0., map.w * map.tsize);
+        res.y = mq::rand::gen_range(0., map.h * map.tsize);
+
+        let gpos: IVec2 = map.gpos(res);
+        if map.at(gpos.x, gpos.y) == '.' {
+            break;
+        }
+    }
+
+    res
+}
+
 #[macroquad::main(window_conf)]
 async fn main() {
     rc::util::set_scrw_scrh(800, 800);
@@ -50,6 +65,7 @@ async fn main() {
         rc::Item::new("gun", include_bytes!("res/gun.png")),
     ];
     let mut item: usize = 0;
+    rc::equip_item(&mut items, "gun");
 
     let shooting_gun: mq::Texture2D = mq::Texture2D::from_file_with_format(include_bytes!("res/gun-shoot.png"), Some(mq::ImageFormat::Png));
 
@@ -68,17 +84,29 @@ async fn main() {
     let out_tex: mq::Texture2D = mq::Texture2D::from_image(&out_img);
 
     let audio: Audio = Audio::new().await;
+    audio.loop_sound("music");
+
+    let mut grappling: bool = false;
+    let mut grapple_target: Vec2 = Vec2::default();
 
     loop {
-        if mq::is_key_pressed(mq::KeyCode::Tab) {
+        if mq::is_key_pressed(mq::KeyCode::Escape) {
             grabbed = !grabbed;
             mq::set_cursor_grab(grabbed);
             mq::show_mouse(!grabbed);
         }
 
         // Movement
-        raycast::util::fps_camera_controls(&map, &mut cam, 2.);
-        raycast::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 1.);
+        if grappling {
+            cam.orig = rc::util::move_towards_collidable(&map, cam.orig, grapple_target, 8.);
+            if cam.orig.distance(grapple_target) < 20. {
+                grappling = false;
+                audio.play_sound("impact");
+            }
+        } else {
+            rc::util::fps_camera_controls(&map, &mut cam, 2.);
+        }
+        rc::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 1.);
 
         // Items
         if mq::is_key_pressed(mq::KeyCode::Key1) {
@@ -100,16 +128,26 @@ async fn main() {
             // Raycast
             let ins: rc::Intersection = rc::cast_ray(&map, ents.ents.iter(), &[], cam);
             match ins.itype {
-                rc::IntersectionType::Entity { index, .. } => ents.remove(index),
+                rc::IntersectionType::Entity { index, .. } => {
+                    ents.remove(index);
+                    audio.play_sound("death");
+                }
                 _ => (),
             }
+        }
+
+        if mq::is_mouse_button_pressed(mq::MouseButton::Right) {
+            grappling = true;
+            grapple_target = cam.along(rc::cast_ray(&map, ents.ents.iter(), &['e'], cam).distance);
+            audio.play_sound("grapple");
         }
 
         // Spawn entities
         let rng: i32 = mq::rand::gen_range(0, 100);
         if rng == 1 && ents.ents.len() < MAX_ENTS {
+            let pos: Vec2 = random_spot(&map);
             ents.push(
-                rc::Entity::new(Vec2::new(100., 200.), 'e', (20., 30.)),
+                rc::Entity::new(pos, 'e', (20., 30.)),
                 mq::rand::gen_range(1., 4.)
             );
         }

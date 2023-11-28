@@ -373,7 +373,7 @@ dependencies = [
 [[package]]
 name = "raycast"
 version = "0.1.0"
-source = "git+https://github.com/longwatermelon/raycast-engine#2bd93a0a134880d21723aea1692a5fb7fe201e41"
+source = "git+https://github.com/longwatermelon/raycast-engine#c99f430e87bd33ca036d14a3c429a680151cbd3d"
 dependencies = [
  "glam 0.24.2",
  "macroquad",
