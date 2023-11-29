@@ -117,6 +117,8 @@ impl Game {
 
         let mut nuts_collected: i32 = 0;
 
+        let mut shake_begin: f64 = -100.;
+
         loop {
             if mq::is_key_pressed(mq::KeyCode::Escape) {
                 grabbed = !grabbed;
@@ -130,6 +132,7 @@ impl Game {
                     if cam.orig.distance(grapple_target) < 20. {
                         grappling = false;
                         self.audio.play_sound("impact");
+                        shake_begin = mq::get_time();
                     } else {
                         cam.orig = rc::util::move_towards_collidable(&map, cam.orig, grapple_target, 8.);
                     }
@@ -276,33 +279,42 @@ impl Game {
             out_img.bytes.fill(0);
             rc::render(&map, ents.ents.iter().chain(nut.iter()).chain(ammo_ents.iter()), cam, rc::Fog::None, &mut out_img);
             out_tex.update(&out_img);
-            mq::draw_texture(&out_tex, 0., 0., mq::WHITE);
+            let topleft: (f32, f32) = rc::scr_topleft();
+            let shake: (f32, f32) = if mq::get_time() - shake_begin < 0.1 {
+                (mq::rand::gen_range(-10., 10.), mq::rand::gen_range(-10., 10.))
+            } else {
+                (0., 0.)
+            };
+            mq::draw_texture(&out_tex, topleft.0 + shake.0, topleft.1 + shake.1, mq::WHITE);
             rc::render_item(&mut items);
 
-            let cx: f32 = mq::screen_width() / 2.;
-            let cy: f32 = mq::screen_height() / 2.;
+            let cx: f32 = rc::scrw() as f32 / 2.;
+            let cy: f32 = rc::scrh() as f32 / 2.;
             mq::draw_line(cx, cy - 10., cx, cy + 10., 2., mq::WHITE);
             mq::draw_line(cx - 10., cy, cx + 10., cy, 2., mq::WHITE);
 
-            mq::draw_text(format!("LOADED:    {}", ammo).as_str(), 10., mq::screen_height() - 40., 24., mq::WHITE);
-            mq::draw_text(format!("INVENTORY: {}", inv_ammo).as_str(), 10., mq::screen_height() - 20., 24., mq::WHITE);
+            mq::draw_text(format!("LOADED:    {}", ammo).as_str(), 10., rc::scrh() as f32 - 40., 24., mq::WHITE);
+            mq::draw_text(format!("INVENTORY: {}", inv_ammo).as_str(), 10., rc::scrh() as f32 - 20., 24., mq::WHITE);
 
             mq::draw_text(format!("HEALTH: {}", health).as_str(), 10., 20., 24., mq::WHITE);
             mq::draw_text(format!("NUTS:   {}", nuts_collected).as_str(), 10., 40., 24., mq::WHITE);
 
             if health == 0 || mq::get_time() - last_hurt < 1. {
-                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(1., 0., 0., 0.5));
+                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(1., 0., 0., (1. - (mq::get_time() - last_hurt)) as f32 * 0.5));
+            }
+
+            if health == 0 || nuts_collected == NUTS_GOAL {
+                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(0., 0., 0., 0.5));
             }
 
             if health == 0 {
                 let text: &str = "Press [q] to restart";
                 let measure = mq::measure_text(text, None, 24, 1.);
-                mq::draw_text(text, mq::screen_width() / 2. - measure.width / 2., mq::screen_height() / 2. - measure.height / 2., 24., mq::WHITE);
+                mq::draw_text(text, rc::scrw() as f32 / 2. - measure.width / 2., rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
             } else if nuts_collected == NUTS_GOAL {
-                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(0., 0., 0., 0.5));
                 let text: &str = "All nuts were successfully collected. Press [q] to restart";
                 let measure = mq::measure_text(text, None, 24, 1.);
-                mq::draw_text(text, mq::screen_width() / 2. - measure.width / 2., mq::screen_height() / 2. - measure.height / 2., 24., mq::WHITE);
+                mq::draw_text(text, rc::scrw() as f32 / 2. - measure.width / 2., rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
             }
 
             mq::next_frame().await;
