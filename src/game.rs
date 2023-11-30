@@ -119,7 +119,12 @@ impl Game {
 
         let mut shake_begin: f64 = -100.;
 
+        let mut wallh: f32;
+
         loop {
+            // wallh = mq::get_time().sin() as f32 + 3.;
+            wallh = 2.;
+            map.wall_height('0', wallh);
             if mq::is_key_pressed(mq::KeyCode::Escape) {
                 grabbed = !grabbed;
                 mq::set_cursor_grab(grabbed);
