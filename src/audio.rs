@@ -17,6 +17,7 @@ impl Audio {
         sounds.insert("impact", audio::load_sound_from_bytes(include_bytes!("res/impact.wav")).await.unwrap());
         sounds.insert("reload", audio::load_sound_from_bytes(include_bytes!("res/reload.wav")).await.unwrap());
         sounds.insert("dry", audio::load_sound_from_bytes(include_bytes!("res/dry.wav")).await.unwrap());
+        sounds.insert("damage", audio::load_sound_from_bytes(include_bytes!("res/damage.wav")).await.unwrap());
 
         Self { sounds }
     }

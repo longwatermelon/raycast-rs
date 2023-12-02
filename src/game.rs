@@ -5,7 +5,7 @@ use macroquad::prelude as mq;
 use glam::{Vec2, IVec2};
 use std::collections::HashMap;
 
-const MAX_ENTS: usize = 15;
+const MAX_ENTS: usize = 30;
 const MAX_AMMO: usize = 3;
 const NUTS_GOAL: i32 = 5;
 
@@ -72,9 +72,12 @@ impl Game {
         let mut textures: HashMap<char, mq::Image> = HashMap::new();
         textures.insert('0', mq::Image::from_file_with_format(include_bytes!("res/wall.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('e', mq::Image::from_file_with_format(include_bytes!("res/shrek.png"), Some(mq::ImageFormat::Png)).unwrap());
+        textures.insert('E', mq::Image::from_file_with_format(include_bytes!("res/shrek-1.png"), Some(mq::ImageFormat::Png)).unwrap());
+        textures.insert('D', mq::Image::from_file_with_format(include_bytes!("res/shrek-2.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('d', mq::Image::from_file_with_format(include_bytes!("res/shrek_dead_gun.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('n', mq::Image::from_file_with_format(include_bytes!("res/deez.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('a', mq::Image::from_file_with_format(include_bytes!("res/ammo.png"), Some(mq::ImageFormat::Png)).unwrap());
+        textures.insert('m', mq::Image::from_file_with_format(include_bytes!("res/mg-ammo.png"), Some(mq::ImageFormat::Png)).unwrap());
         let mut map: rc::Map = rc::Map::from_bytes(include_bytes!("res/map"), textures);
         map.floor_tex(rc::Surface::Color(mq::DARKGRAY.into()));
         map.ceil_tex(rc::Surface::Color(mq::GRAY.into()));
@@ -85,11 +88,13 @@ impl Game {
 
         let mut items: Vec<rc::Item> = vec![
             rc::Item::new("gun", include_bytes!("res/gun.png")),
+            rc::Item::new("mg", include_bytes!("res/machine-gun.png")),
         ];
         let mut item: usize = 0;
         rc::equip_item(&mut items, "gun");
 
         let shooting_gun: mq::Texture2D = mq::Texture2D::from_file_with_format(include_bytes!("res/gun-shoot.png"), Some(mq::ImageFormat::Png));
+        let shooting_mg: mq::Texture2D = mq::Texture2D::from_file_with_format(include_bytes!("res/machine-gun-shoot.png"), Some(mq::ImageFormat::Png));
 
         let mut cam: rc::Ray = rc::Ray::new(Vec2::new(100., 100.), 0.);
         let mut prev_mpos: (f32, f32) = mq::mouse_position();
@@ -110,16 +115,21 @@ impl Game {
 
         let mut ammo: i32 = 16;
         let mut inv_ammo: i32 = 32;
+        let mut mg_ammo: i32 = 50;
+        let mut inv_mg_ammo: i32 = 100;
         let mut reload_start: Option<f64> = None;
 
-        let mut health: i32 = 3;
+        let mut health: i32 = 5;
         let mut last_hurt: f64 = -100.;
 
         let mut nuts_collected: i32 = 0;
 
         let mut shake_begin: f64 = -100.;
+        let mut mg_shake_begin: f64 = -100.;
 
         let mut wallh: f32;
+
+        let mut mg_last_shot: f64 = -100.;
 
         loop {
             // wallh = mq::get_time().sin() as f32 + 3.;
@@ -147,9 +157,9 @@ impl Game {
                 rc::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 0.5);
 
                 // Misc keys
-                if mq::is_key_pressed(mq::KeyCode::R) {
+                if (item == 0 || item == 1) && mq::is_key_pressed(mq::KeyCode::R) {
                     reload_start = Some(mq::get_time());
-                    items[0].unequip();
+                    items[item].unequip();
                     self.audio.play_sound("reload");
                 }
 
@@ -157,10 +167,17 @@ impl Game {
                 if let Some(start) = reload_start {
                     if mq::get_time() - start > 2. {
                         reload_start = None;
-                        let reloaded: i32 = inv_ammo.min(16).min(16 - ammo);
-                        inv_ammo -= reloaded;
-                        ammo += reloaded;
-                        items[0].equip();
+                        let n: i32 = if item == 0 { 16 } else { 50 };
+                        let reloaded: i32 = (if item == 0 { inv_ammo } else { inv_mg_ammo }).min(n).min(n - if item == 0 { ammo } else { mg_ammo });
+
+                        if item == 0 {
+                            inv_ammo -= reloaded;
+                            ammo += reloaded;
+                        } else {
+                            inv_mg_ammo -= reloaded;
+                            mg_ammo += reloaded;
+                        }
+                        items[item].equip();
                     }
                 }
 
@@ -170,12 +187,18 @@ impl Game {
                     rc::equip_item(&mut items, "gun");
                 }
 
+                if item != 1 && mq::is_key_pressed(mq::KeyCode::Key2) {
+                    item = 1;
+                    rc::equip_item(&mut items, "mg");
+                }
+
                 // Item use
                 if mq::is_mouse_button_pressed(mq::MouseButton::Left) {
                     // Animation
                     match item {
                         0 => {
                             if ammo > 0 {
+                                mg_shake_begin = mq::get_time();
                                 items[item].texswap(&shooting_gun, 0.1);
                                 ammo -= 1;
                                 self.audio.play_sound("shoot");
@@ -185,14 +208,64 @@ impl Game {
                                 match ins.itype {
                                     rc::IntersectionType::Entity { index, .. } => {
                                         // ents.remove(index);
-                                        ents.death_timers[index] = Some(mq::get_time());
-                                        ents.ents[index].texture = 'd';
-                                        self.audio.play_sound("death");
+                                        ents.ents[index].texture = match ents.ents[index].texture {
+                                            'e' => 'E',
+                                            'E' => 'D',
+                                            'D' => 'd',
+                                            _ => 'd',
+                                        };
+
+                                        self.audio.play_sound("damage");
+                                        if ents.ents[index].texture == 'd' {
+                                            ents.death_timers[index] = Some(mq::get_time());
+                                            self.audio.play_sound("death");
+                                        }
                                     }
                                     _ => (),
                                 }
                             } else {
                                 self.audio.play_sound("dry");
+                            }
+                        },
+                        _ => (),
+                    }
+                }
+
+                if mq::is_mouse_button_down(mq::MouseButton::Left) {
+                    // Animation
+                    match item {
+                        1 => {
+                            if mq::get_time() - mg_last_shot > 0.1 {
+                                mg_last_shot = mq::get_time();
+                                mg_shake_begin = mq::get_time();
+                                if mg_ammo > 0 {
+                                    items[item].texswap(&shooting_mg, 0.1);
+                                    mg_ammo -= 1;
+                                    self.audio.play_sound("shoot");
+
+                                    // Cast gun ray
+                                    let ins: rc::Intersection = rc::cast_ray(&map, ents.ents.iter(), &['d'], cam);
+                                    match ins.itype {
+                                        rc::IntersectionType::Entity { index, .. } => {
+                                            // ents.remove(index);
+                                            ents.ents[index].texture = match ents.ents[index].texture {
+                                                'e' => 'E',
+                                                'E' => 'D',
+                                                'D' => 'd',
+                                                _ => 'd',
+                                            };
+
+                                            self.audio.play_sound("damage");
+                                            if ents.ents[index].texture == 'd' {
+                                                ents.death_timers[index] = Some(mq::get_time());
+                                                self.audio.play_sound("death");
+                                            }
+                                        }
+                                        _ => (),
+                                    }
+                                } else {
+                                    self.audio.play_sound("dry");
+                                }
                             }
                         },
                         _ => (),
@@ -215,8 +288,8 @@ impl Game {
                     );
                 }
 
-                if rng == 2 && ammo_ents.len() < MAX_AMMO {
-                    ammo_ents.push(rc::Entity::new(random_spot(&map), 'a', (20., 25.)));
+                if (rng == 2 || rng == 3) && ammo_ents.len() < MAX_AMMO {
+                    ammo_ents.push(rc::Entity::new(random_spot(&map), if rng == 2 { 'a' } else { 'm' }, (20., 25.)));
                 }
 
                 if nut.is_empty() {
@@ -227,8 +300,12 @@ impl Game {
                 for (i, ent) in ammo_ents.iter().enumerate() {
                     if cam.orig.distance(ent.pos) < 20. {
                         // Can't remove multiple ents in a singe loop, just get the rest next frame
+                        if ent.texture == 'a' {
+                            inv_ammo += 32;
+                        } else {
+                            inv_mg_ammo += 50;
+                        }
                         ammo_ents.remove(i);
-                        inv_ammo += 32;
                         self.audio.play_sound("ammo");
                         break;
                     }
@@ -282,7 +359,7 @@ impl Game {
 
             mq::clear_background(mq::BLACK);
             out_img.bytes.fill(0);
-            rc::render(&map, ents.ents.iter().chain(nut.iter()).chain(ammo_ents.iter()), cam, rc::Fog::None, &mut out_img);
+            rc::render(&map, ents.ents.iter().chain(nut.iter()).chain(ammo_ents.iter()), cam, rc::Fog::None, &|| 0., &mut out_img);
             out_tex.update(&out_img);
             let topleft: (f32, f32) = rc::scr_topleft();
             let shake: (f32, f32) = if mq::get_time() - shake_begin < 0.1 {
@@ -290,7 +367,13 @@ impl Game {
             } else {
                 (0., 0.)
             };
-            mq::draw_texture(&out_tex, topleft.0 + shake.0, topleft.1 + shake.1, mq::WHITE);
+
+            let mg_shake: (f32, f32) = if mq::get_time() - mg_shake_begin < 0.05 {
+                (mq::rand::gen_range(-5., 5.), mq::rand::gen_range(-5., 5.))
+            } else {
+                (0., 0.)
+            };
+            mq::draw_texture(&out_tex, topleft.0 + shake.0 + mg_shake.0, topleft.1 + shake.1 + mg_shake.1, mq::WHITE);
             rc::render_item(&mut items);
 
             let cx: f32 = rc::scrw() as f32 / 2.;
@@ -298,8 +381,8 @@ impl Game {
             mq::draw_line(cx, cy - 10., cx, cy + 10., 2., mq::WHITE);
             mq::draw_line(cx - 10., cy, cx + 10., cy, 2., mq::WHITE);
 
-            mq::draw_text(format!("LOADED:    {}", ammo).as_str(), 10., rc::scrh() as f32 - 40., 24., mq::WHITE);
-            mq::draw_text(format!("INVENTORY: {}", inv_ammo).as_str(), 10., rc::scrh() as f32 - 20., 24., mq::WHITE);
+            mq::draw_text(format!("LOADED:    {}", if item == 0 { ammo } else { mg_ammo }).as_str(), 10., rc::scrh() as f32 - 40., 24., mq::WHITE);
+            mq::draw_text(format!("INVENTORY: {}", if item == 0 { inv_ammo } else { inv_mg_ammo }).as_str(), 10., rc::scrh() as f32 - 20., 24., mq::WHITE);
 
             mq::draw_text(format!("HEALTH: {}", health).as_str(), 10., 20., 24., mq::WHITE);
             mq::draw_text(format!("NUTS:   {}", nuts_collected).as_str(), 10., 40., 24., mq::WHITE);
