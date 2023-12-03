@@ -303,7 +303,7 @@ impl Game {
                         if ent.texture == 'a' {
                             inv_ammo += 32;
                         } else {
-                            inv_mg_ammo += 50;
+                            inv_mg_ammo += 100;
                         }
                         ammo_ents.remove(i);
                         self.audio.play_sound("ammo");
