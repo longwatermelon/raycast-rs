@@ -378,31 +378,33 @@ impl Game {
 
             let cx: f32 = rc::scrw() as f32 / 2.;
             let cy: f32 = rc::scrh() as f32 / 2.;
-            mq::draw_line(cx, cy - 10., cx, cy + 10., 2., mq::WHITE);
-            mq::draw_line(cx - 10., cy, cx + 10., cy, 2., mq::WHITE);
+            mq::draw_line(topleft.0 + cx, topleft.1 + cy - 10., topleft.0 + cx, topleft.1 + cy + 10., 2., mq::WHITE);
+            mq::draw_line(topleft.0 + cx - 10., topleft.1 + cy, topleft.0 + cx + 10., topleft.1 + cy, 2., mq::WHITE);
 
-            mq::draw_text(format!("LOADED:    {}", if item == 0 { ammo } else { mg_ammo }).as_str(), 10., rc::scrh() as f32 - 40., 24., mq::WHITE);
-            mq::draw_text(format!("INVENTORY: {}", if item == 0 { inv_ammo } else { inv_mg_ammo }).as_str(), 10., rc::scrh() as f32 - 20., 24., mq::WHITE);
+            mq::draw_text(format!("LOADED:    {}", if item == 0 { ammo } else { mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 40., 24., mq::WHITE);
+            mq::draw_text(format!("INVENTORY: {}", if item == 0 { inv_ammo } else { inv_mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 20., 24., mq::WHITE);
 
-            mq::draw_text(format!("HEALTH: {}", health).as_str(), 10., 20., 24., mq::WHITE);
-            mq::draw_text(format!("NUTS:   {}", nuts_collected).as_str(), 10., 40., 24., mq::WHITE);
+            mq::draw_text(format!("HEALTH: {}", health).as_str(), topleft.0 + 10., topleft.1 + 20., 24., mq::WHITE);
+            mq::draw_text(format!("NUTS:   {}", nuts_collected).as_str(), topleft.0 + 10., topleft.1 + 40., 24., mq::WHITE);
+
+            mq::draw_text(format!("FPS {}", mq::get_fps()).as_str(), topleft.0 + rc::scrw() as f32 - 80., topleft.1 + 20., 24., mq::WHITE);
 
             if health == 0 || mq::get_time() - last_hurt < 1. {
-                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(1., 0., 0., (1. - (mq::get_time() - last_hurt)) as f32 * 0.5));
+                mq::draw_rectangle(topleft.0, topleft.1, rc::scrw() as f32, rc::scrh() as f32, mq::Color::new(1., 0., 0., (1. - (mq::get_time() - last_hurt)) as f32 * 0.5));
             }
 
             if health == 0 || nuts_collected == NUTS_GOAL {
-                mq::draw_rectangle(0., 0., 800., 800., mq::Color::new(0., 0., 0., 0.5));
+                mq::draw_rectangle(topleft.0, topleft.1, rc::scrw() as f32, rc::scrh() as f32, mq::Color::new(0., 0., 0., 0.5));
             }
 
             if health == 0 {
                 let text: &str = "Press [q] to restart";
                 let measure = mq::measure_text(text, None, 24, 1.);
-                mq::draw_text(text, rc::scrw() as f32 / 2. - measure.width / 2., rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
+                mq::draw_text(text, topleft.0 + rc::scrw() as f32 / 2. - measure.width / 2., topleft.1 + rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
             } else if nuts_collected == NUTS_GOAL {
                 let text: &str = "All nuts were successfully collected. Press [q] to restart";
                 let measure = mq::measure_text(text, None, 24, 1.);
-                mq::draw_text(text, rc::scrw() as f32 / 2. - measure.width / 2., rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
+                mq::draw_text(text, topleft.0 + rc::scrw() as f32 / 2. - measure.width / 2., topleft.1 +  rc::scrh() as f32 / 2. - measure.height / 2., 24., mq::WHITE);
             }
 
             mq::next_frame().await;
