@@ -13,6 +13,7 @@ struct Entities {
     ents: Vec<rc::Entity>,
     speeds: Vec<f32>,
     death_timers: Vec<Option<f64>>,
+    velocities: Vec<Vec2>,
 }
 
 impl Entities {
@@ -21,6 +22,7 @@ impl Entities {
             ents: Vec::new(),
             speeds: Vec::new(),
             death_timers: Vec::new(),
+            velocities: Vec::new(),
         }
     }
 
@@ -28,12 +30,14 @@ impl Entities {
         self.ents.push(ent);
         self.speeds.push(speed);
         self.death_timers.push(None);
+        self.velocities.push(Vec2::ZERO);
     }
 
     fn remove(&mut self, index: usize) {
         self.ents.remove(index);
         self.speeds.remove(index);
         self.death_timers.remove(index);
+        self.velocities.remove(index);
     }
 }
 
@@ -78,6 +82,7 @@ impl Game {
         textures.insert('n', mq::Image::from_file_with_format(include_bytes!("res/deez.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('a', mq::Image::from_file_with_format(include_bytes!("res/ammo.png"), Some(mq::ImageFormat::Png)).unwrap());
         textures.insert('m', mq::Image::from_file_with_format(include_bytes!("res/mg-ammo.png"), Some(mq::ImageFormat::Png)).unwrap());
+        textures.insert('x', mq::Image::from_file_with_format(include_bytes!("res/shrek-halved.png"), Some(mq::ImageFormat::Png)).unwrap());
         let mut map: rc::Map = rc::Map::from_bytes(include_bytes!("res/map"), textures);
         map.floor_tex(rc::Surface::Color(mq::DARKGRAY.into()));
         map.ceil_tex(rc::Surface::Color(mq::GRAY.into()));
@@ -87,11 +92,12 @@ impl Game {
         let mut ammo_ents: Vec<rc::Entity> = Vec::new();
 
         let mut items: Vec<rc::Item> = vec![
-            rc::Item::new("gun", include_bytes!("res/gun.png")),
+            rc::Item::new("knife", include_bytes!("res/knife.png")),
             rc::Item::new("mg", include_bytes!("res/machine-gun.png")),
+            rc::Item::new("gun", include_bytes!("res/gun.png")),
         ];
         let mut item: usize = 0;
-        rc::equip_item(&mut items, "gun");
+        rc::equip_item(&mut items, "knife");
 
         let shooting_gun: mq::Texture2D = mq::Texture2D::from_file_with_format(include_bytes!("res/gun-shoot.png"), Some(mq::ImageFormat::Png));
         let shooting_mg: mq::Texture2D = mq::Texture2D::from_file_with_format(include_bytes!("res/machine-gun-shoot.png"), Some(mq::ImageFormat::Png));
@@ -131,6 +137,8 @@ impl Game {
 
         let mut mg_last_shot: f64 = -100.;
 
+        let mut last_jab: f64 = -100.;
+
         loop {
             // wallh = mq::get_time().sin() as f32 + 3.;
             wallh = 2.;
@@ -144,20 +152,20 @@ impl Game {
             if health > 0 && nuts_collected < NUTS_GOAL {
                 // Movement
                 if grappling {
-                    if cam.orig.distance(grapple_target) < 20. {
+                    if cam.orig.distance(grapple_target) < if item == 0 { 40. } else { 20. } {
                         grappling = false;
                         self.audio.play_sound("impact");
                         shake_begin = mq::get_time();
                     } else {
-                        cam.orig = rc::util::move_towards_collidable(&map, cam.orig, grapple_target, 8.);
+                        cam.orig = rc::util::move_towards_collidable(&map, cam.orig, grapple_target, if item == 0 { 16. } else if item == 2 { 10. } else { 8. });
                     }
                 } else {
-                    rc::util::fps_camera_controls(&map, &mut cam, 2.);
+                    rc::util::fps_camera_controls(&map, &mut cam, if item == 0 { 4. } else if item == 2 { 3. } else { 2. });
                 }
                 rc::util::fps_camera_rotation(&mut cam, &mut prev_mpos, 0.5);
 
                 // Misc keys
-                if (item == 0 || item == 1) && mq::is_key_pressed(mq::KeyCode::R) {
+                if (item == 2 || item == 1) && mq::is_key_pressed(mq::KeyCode::R) {
                     reload_start = Some(mq::get_time());
                     items[item].unequip();
                     self.audio.play_sound("reload");
@@ -167,10 +175,10 @@ impl Game {
                 if let Some(start) = reload_start {
                     if mq::get_time() - start > 2. {
                         reload_start = None;
-                        let n: i32 = if item == 0 { 16 } else { 50 };
-                        let reloaded: i32 = (if item == 0 { inv_ammo } else { inv_mg_ammo }).min(n).min(n - if item == 0 { ammo } else { mg_ammo });
+                        let n: i32 = if item == 2 { 16 } else { 50 };
+                        let reloaded: i32 = (if item == 2 { inv_ammo } else { inv_mg_ammo }).min(n).min(n - if item == 2 { ammo } else { mg_ammo });
 
-                        if item == 0 {
+                        if item == 2 {
                             inv_ammo -= reloaded;
                             ammo += reloaded;
                         } else {
@@ -182,8 +190,8 @@ impl Game {
                 }
 
                 // Items
-                if item != 0 && mq::is_key_pressed(mq::KeyCode::Key1) {
-                    item = 0;
+                if item != 2 && mq::is_key_pressed(mq::KeyCode::Key3) {
+                    item = 2;
                     rc::equip_item(&mut items, "gun");
                 }
 
@@ -192,11 +200,16 @@ impl Game {
                     rc::equip_item(&mut items, "mg");
                 }
 
+                if item != 0 && mq::is_key_pressed(mq::KeyCode::Key1) {
+                    item = 0;
+                    rc::equip_item(&mut items, "knife");
+                }
+
                 // Item use
                 if mq::is_mouse_button_pressed(mq::MouseButton::Left) {
                     // Animation
                     match item {
-                        0 => {
+                        2 => {
                             if ammo > 0 {
                                 mg_shake_begin = mq::get_time();
                                 items[item].texswap(&shooting_gun, 0.1);
@@ -226,13 +239,17 @@ impl Game {
                             } else {
                                 self.audio.play_sound("dry");
                             }
-                        },
+                        }
+                        0 => {
+                            items[0].jab(Vec2::new(-100., 100.), 0.05);
+                            last_jab = mq::get_time();
+
+                        }
                         _ => (),
                     }
                 }
 
                 if mq::is_mouse_button_down(mq::MouseButton::Left) {
-                    // Animation
                     match item {
                         1 => {
                             if mq::get_time() - mg_last_shot > 0.1 {
@@ -267,14 +284,38 @@ impl Game {
                                     self.audio.play_sound("dry");
                                 }
                             }
-                        },
+                        }
                         _ => (),
+                    }
+                }
+
+                if mq::get_time() - last_jab < 0.1 {
+                    let mut hit_ents: bool = false;
+                    for (ent, (death, vel)) in ents.ents.iter_mut().zip(ents.death_timers.iter_mut().zip(ents.velocities.iter_mut())) {
+                        if ent.texture == 'x' || vel.x.abs() > 0.001 || vel.y.abs() > 0.001 {
+                            continue;
+                        }
+
+                        if ent.pos.distance(cam.orig) < 30. && (ent.pos - cam.orig).normalize().dot(cam.dir()) > 0.2 {
+                            if grappling {
+                                *vel = (grapple_target - cam.orig).normalize();
+                                hit_ents = true;
+                            } else {
+                                ent.texture = 'x';
+                                *death = Some(mq::get_time());
+                                self.audio.play_sound("damage");
+                            }
+                        }
+                    }
+
+                    if hit_ents {
+                        grappling = false;
                     }
                 }
 
                 if mq::is_mouse_button_pressed(mq::MouseButton::Right) {
                     grappling = true;
-                    grapple_target = cam.along(rc::cast_ray(&map, ents.ents.iter(), &['e', 'd'], cam).distance);
+                    grapple_target = cam.along(rc::cast_ray(&map, ents.ents.iter(), &['e', 'd', 'x', 'a', 'm'], cam).distance);
                     self.audio.play_sound("grapple");
                 }
 
@@ -328,24 +369,37 @@ impl Game {
                 }
 
                 // Move entities
-                for (ent, (speed, dead)) in ents.ents.iter_mut()
+                for (ent, (speed, (dead, vel))) in ents.ents.iter_mut()
                                                      .zip(ents.speeds.iter()
-                                                     .zip(ents.death_timers.iter()))
+                                                     .zip(ents.death_timers.iter_mut()
+                                                     .zip(ents.velocities.iter())))
                 {
                     if dead.is_some() {
                         continue;
                     }
 
-                    let diff: Vec2 = cam.orig - ent.pos;
-                    let theta: f32 = f32::atan2(diff.y, diff.x) + mq::rand::gen_range(-1.5, 1.5);
-                    let dir: Vec2 = Vec2::new(theta.cos(), theta.sin());
+                    if vel.x.abs() > 0.001 || vel.y.abs() > 0.001 {
+                        let orig_pos: Vec2 = ent.pos;
+                        ent.pos = rc::util::move_towards_collidable(&map, ent.pos, ent.pos + *vel, 16.);
+                        if ent.pos.distance(orig_pos + *vel * 16.) > 5. {
+                            *dead = Some(mq::get_time());
+                            ent.texture = 'x';
+                            self.audio.play_sound("impact");
+                            self.audio.play_sound("death");
+                            shake_begin = mq::get_time();
+                        }
+                    } else {
+                        let diff: Vec2 = cam.orig - ent.pos;
+                        let theta: f32 = f32::atan2(diff.y, diff.x) + mq::rand::gen_range(-1.5, 1.5);
+                        let dir: Vec2 = Vec2::new(theta.cos(), theta.sin());
 
-                    ent.pos = rc::util::move_towards_collidable(&map, ent.pos, ent.pos + dir, *speed);
+                        ent.pos = rc::util::move_towards_collidable(&map, ent.pos, ent.pos + dir, *speed);
+                    }
                 }
 
                 // Entities damage
                 for (ent, death) in ents.ents.iter().zip(ents.death_timers.iter()) {
-                    if death.is_none() && mq::get_time() - last_hurt >= 1. && cam.orig.distance(ent.pos) < 20. {
+                    if death.is_none() && mq::get_time() - last_hurt >= 1. && cam.orig.distance(ent.pos) < 10. {
                         health -= 1;
                         last_hurt = mq::get_time();
                     }
@@ -378,11 +432,13 @@ impl Game {
 
             let cx: f32 = rc::scrw() as f32 / 2.;
             let cy: f32 = rc::scrh() as f32 / 2.;
-            mq::draw_line(topleft.0 + cx, topleft.1 + cy - 10., topleft.0 + cx, topleft.1 + cy + 10., 2., mq::WHITE);
-            mq::draw_line(topleft.0 + cx - 10., topleft.1 + cy, topleft.0 + cx + 10., topleft.1 + cy, 2., mq::WHITE);
 
-            mq::draw_text(format!("LOADED:    {}", if item == 0 { ammo } else { mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 40., 24., mq::WHITE);
-            mq::draw_text(format!("INVENTORY: {}", if item == 0 { inv_ammo } else { inv_mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 20., 24., mq::WHITE);
+            if item != 0 {
+                mq::draw_line(topleft.0 + cx, topleft.1 + cy - 10., topleft.0 + cx, topleft.1 + cy + 10., 2., mq::WHITE);
+                mq::draw_line(topleft.0 + cx - 10., topleft.1 + cy, topleft.0 + cx + 10., topleft.1 + cy, 2., mq::WHITE);
+                mq::draw_text(format!("LOADED:    {}", if item == 2 { ammo } else { mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 40., 24., mq::WHITE);
+                mq::draw_text(format!("INVENTORY: {}", if item == 2 { inv_ammo } else { inv_mg_ammo }).as_str(), topleft.0 + 10., topleft.1 + rc::scrh() as f32 - 20., 24., mq::WHITE);
+            }
 
             mq::draw_text(format!("HEALTH: {}", health).as_str(), topleft.0 + 10., topleft.1 + 20., 24., mq::WHITE);
             mq::draw_text(format!("NUTS:   {}", nuts_collected).as_str(), topleft.0 + 10., topleft.1 + 40., 24., mq::WHITE);
