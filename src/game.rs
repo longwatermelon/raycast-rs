@@ -241,7 +241,7 @@ impl Game {
                             }
                         }
                         0 => {
-                            items[0].jab(Vec2::new(-100., 100.), 0.05);
+                            items[0].jab(if grappling { Vec2::new(-50., -50.) } else { Vec2::new(-100., 100.) }, 0.05);
                             last_jab = mq::get_time();
 
                         }
@@ -321,7 +321,7 @@ impl Game {
 
                 // Entity spawning
                 let rng: i32 = mq::rand::gen_range(0, 100);
-                if rng == 1 && ents.ents.len() < MAX_ENTS {
+                if rng < 3 && ents.ents.len() < MAX_ENTS {
                     let pos: Vec2 = random_spot(&map);
                     ents.push(
                         rc::Entity::new(pos, 'e', (20., 30.)),
@@ -399,7 +399,7 @@ impl Game {
 
                 // Entities damage
                 for (ent, death) in ents.ents.iter().zip(ents.death_timers.iter()) {
-                    if death.is_none() && mq::get_time() - last_hurt >= 1. && cam.orig.distance(ent.pos) < 10. {
+                    if death.is_none() && mq::get_time() - last_hurt >= 1. && cam.orig.distance(ent.pos) < 5. {
                         health -= 1;
                         last_hurt = mq::get_time();
                     }
